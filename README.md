@@ -1,4 +1,4 @@
-# OpenWrt x86_64 自动编译仓库（openwrt-auto-build）
+# OpenWrt x86_64 自动编译仓库（OpenWrt-Autobuild）
 
 自动跟踪 [openwrt/openwrt](https://github.com/openwrt/openwrt) 的最新**正式版** tag，编译 x86_64 软路由精简固件，并发布到本仓库的 Releases。
 
