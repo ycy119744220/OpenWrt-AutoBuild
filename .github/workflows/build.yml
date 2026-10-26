@@ -92,8 +92,9 @@ jobs:
           ( cd openwrt && python3 ../scripts/trim_x86.py )
           ( cd openwrt && make defconfig )
           ( cd openwrt && bash ../scripts/verify_config.sh )
-          mkdir -p release
-          cp openwrt/.config "release/config-${VERFILE}.config"
+          # .config 只作为 Actions artifact 留存，不进 release/（Release 只放两个镜像）
+          mkdir -p out-config
+          cp openwrt/.config "out-config/config-${VERFILE}.config"
 
       - name: Upload generated .config
         if: always()
@@ -102,7 +103,7 @@ jobs:
           name: dot-config-${{ steps.ver.outputs.version }}
           path: |
             openwrt/.config
-            release/config-*.config
+            out-config/config-*.config
           if-no-files-found: ignore
           retention-days: 7
 
@@ -136,17 +137,31 @@ jobs:
         run: bash scripts/make_preconfigured.sh "$VERFILE" files/preconfigured release
 
       - name: Checksums
+        # 只把 sha256 打印进构建日志备查，不生成 sha256sums.txt 文件
+        # （Release 里只保留两个 .img.gz，不要任何附带文件）
         run: |
           set -euo pipefail
           cd release
-          # 注意：重定向会先建出 sha256sums.txt，直接 sha256sum * 会把这个空文件也算进去
-          for f in *; do
-            [ -f "$f" ] || continue
-            [ "$f" = "sha256sums.txt" ] && continue
-            sha256sum "$f"
-          done > sha256sums.txt
-          cat sha256sums.txt
+          for f in *.img.gz; do
+            echo "== $(sha256sum "$f")"
+          done
           ls -lh
+
+      - name: Drop stale release for this tag
+        # 同一个 tag 重跑时，旧 Release 里的历史附件（rootfs.tar.gz / kernel.bin /
+        # config / sha256sums.txt）不会被 action-gh-release 自动清掉，会残留下来。
+        # 这里先把该 tag 的 Release 删掉（保留 git tag），随后由下一步重建，
+        # 保证 Release 里始终只有两个 .img.gz。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "发现已存在的 Release $VERSION，删除后重建（git tag 保留）"
+            gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes
+          else
+            echo "该 tag 尚无 Release，直接创建"
+          fi
 
       - name: Publish release
         uses: softprops/action-gh-release@v3
@@ -171,6 +186,8 @@ jobs:
 
             > 注意：静态租约与端口转发指向 `192.168.88.0/24`，需把 LAN 改成 `192.168.88.1/24` 后才生效；在 `192.168.1.0/24` 下这两组配置会被忽略。
 
+            > SHA256 校验值打印在对应 Actions 运行的 `Checksums` 步骤日志里。
+
             ## 刷写
 
             1. 解压 `.img.gz` 得到 `.img`
@@ -180,4 +197,5 @@ jobs:
 
             root 默认无密码，请勿直接暴露到公网。串口控制台为 `ttyS0`，115200。
           files: |
-            release/*
+            release/*-ext4-combined-efi.img.gz
+            release/*-ext4-combined-efi-preconfigured.img.gz

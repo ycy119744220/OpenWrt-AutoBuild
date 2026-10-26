@@ -1,4 +1,4 @@
-# OpenWrt x86_64 自动编译仓库
+# OpenWrt x86_64 自动编译仓库（openwrt-auto-build）
 
 自动跟踪 [openwrt/openwrt](https://github.com/openwrt/openwrt) 的最新**正式版** tag，编译 x86_64 软路由精简固件，并发布到本仓库的 Releases。
 
@@ -6,18 +6,16 @@
 
 ## 发布产物
 
-每次编译产出 5 个文件：
+每次编译**只发布 2 个文件**（其余产物一律不进 Release）：
 
 | 文件 | 说明 |
 | --- | --- |
 | `openwrt-<ver>-x86-64-generic-ext4-combined-efi.img.gz` | 普通版，出厂默认配置 |
 | `openwrt-<ver>-x86-64-generic-ext4-combined-efi-preconfigured.img.gz` | 预配置版，额外带初始网络/租约/转发/UPnP |
-| `openwrt-<ver>-x86-64-generic-rootfs.tar.gz` | 根文件系统归档 |
-| `openwrt-<ver>-x86-64-generic-kernel.bin` | 内核 |
-| `config-<ver>.config` | 本次实际生效的 `.config` |
-| `sha256sums.txt` | 校验和 |
 
 **两个镜像都默认简体中文 + Argon 主题**，区别只在初始网络配置。
+
+`rootfs.tar.gz`、`kernel.bin`、`.config` 只留在 Actions artifact 里；SHA256 校验值打印在 `Checksums` 步骤日志中，不生成 `sha256sums.txt` 附件。同一 tag 重跑会先删掉旧 Release 再重建，不会残留历史附件。
 
 ## 四个工作流
 
