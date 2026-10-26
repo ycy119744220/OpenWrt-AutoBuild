@@ -41,7 +41,10 @@ CONFIG_PACKAGE_kmod-e100
 CONFIG_PACKAGE_kmod-igb
 CONFIG_PACKAGE_kmod-ixgbe
 CONFIG_PACKAGE_kmod-drm-i915
+CONFIG_RUBY_ENABLE_YJIT
 "
+# CONFIG_RUBY_ENABLE_YJIT 必须禁用：它一开就会拉 rust/host（rustc 内部再编整套 LLVM），
+# 单次构建多耗 2 小时以上。OpenClash 只用 ruby + ruby-yaml，不需要 YJIT。
 
 bad=0
 for s in $must_y; do
