@@ -81,7 +81,9 @@ jobs:
         if: always()
         run: |
           echo "=== 关键符号 ==="
-          grep -nE 'CONFIG_(PACKAGE_(luci-theme-argon|luci-app-argon-config|luci-app-openclash|openclash-core-meta|openclash-geo-db|dnsmasq|luci-app-upnp|kmod-igc|kmod-r8169)|LUCI_LANG)' openwrt/.config || echo "(未找到任何关键符号)"
+          grep -nE 'CONFIG_(PACKAGE_(luci-theme-argon|luci-app-argon-config|luci-app-openclash|openclash-core-meta|openclash-geo-db|dnsmasq|luci-app-upnp|kmod-igc|kmod-r8169)|LUCI_LANG_zh_Hans)' openwrt/.config || echo "(未找到任何关键符号)"
+          echo "=== 编译耗时相关开关 ==="
+          grep -nE 'CONFIG_(RUBY_ENABLE_YJIT|PACKAGE_rust)[= ]|# CONFIG_(RUBY_ENABLE_YJIT|PACKAGE_rust) is not set' openwrt/.config || echo "(未找到 YJIT/rust 符号)"
           echo "=== 第三方包目录 ==="
           ls -d openwrt/package/luci-theme-argon openwrt/package/luci-app-argon-config openwrt/package/luci-app-openclash 2>&1 || true
 
@@ -91,5 +93,6 @@ jobs:
         with:
           name: dot-config
           path: openwrt/.config
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
