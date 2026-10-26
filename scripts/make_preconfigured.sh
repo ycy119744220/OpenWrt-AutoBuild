@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 # 把 overlay 注入 ext4 镜像，产出 -preconfigured 版本（不重新编译）
+#
+# 两个坑（都踩过）：
+#   1) x86 的 ext4-combined-efi 镜像里 p1(内核) 和 p2(rootfs) 都是 ext4，
+#      盲取"第一个 ext4"会挂到内核分区：文件拷得进去、90-preconfigured 检查也能过，
+#      但刷机后预配置完全不生效。→ 必须校验 /etc/openwrt_release 才算 rootfs。
+#   2) 不能用 lsblk 的 FSTYPE 来筛分区。GitHub runner 上 udev 对新 loop 分区的探测
+#      会慢半拍，lsblk 当场返回空 FSTYPE，候选列表直接为空 → "镜像内未找到 ext4 分区"。
+#      → 改为直接枚举 /sys/block 下的分区节点，完全不依赖 udev 与 FSTYPE。
 set -euo pipefail
 
 V=${1:?用法: make_preconfigured.sh <版本号> <overlay目录> <输出目录>}
@@ -33,26 +41,55 @@ echo "==> 源镜像: $SRC"
 echo "==> 目标:   $DST"
 echo "==> 解压镜像"
 gunzip -c "$SRC" >"$work/disk.img"
+ls -l "$work/disk.img"
 
 echo "==> 挂载 rootfs 分区"
 loop=$(sudo losetup -fP --show "$work/disk.img")
+loopname=$(basename "$loop")
+echo "    loop: $loop ($loopname)"
+sudo udevadm settle 2>/dev/null || true
+sleep 1
+
+# 直接读 sysfs 枚举分区节点，拿不到就 partx 追加、重试
+parts=()
+for try in $(seq 1 15); do
+	parts=()
+	for d in /sys/block/"$loopname"/"${loopname}"p*; do
+		[ -e "$d" ] || continue
+		parts+=("/dev/$(basename "$d")")
+	done
+	[ "${#parts[@]}" -gt 0 ] && break
+	echo "    第 $try 次未看到分区节点，尝试 partx -a 后重试"
+	sudo partx -a "$loop" >/dev/null 2>&1 || true
+	sudo udevadm settle 2>/dev/null || true
+	sleep 1
+done
+echo "    分区: ${parts[*]:-（无，按单一文件系统处理）}"
+
+# 诊断信息：出问题时一眼能看出布局
+echo "    ---- lsblk ----"
+lsblk -o NAME,FSTYPE,SIZE,TYPE "$loop" 2>/dev/null || true
+echo "    ---- blkid ----"
+sudo blkid ${parts[@]+"${parts[@]}"} 2>/dev/null || true
+echo "    ----------------"
+
+# 候选：所有分区 + loop 自身（镜像若是单一文件系统），按体积从大到小
+cands=()
+for dev in ${parts[@]+"${parts[@]}"} "$loop"; do
+	sz=$(sudo blockdev --getsize64 "$dev" 2>/dev/null || echo 0)
+	cands+=("$sz $dev")
+done
+mapfile -t ordered < <(printf '%s\n' "${cands[@]}" | sort -rn | awk '{ print $2 }')
+
 mountpt="$work/mnt"
 mkdir -p "$mountpt"
-
-# 注意：x86 的 ext4-combined-efi 镜像里 p1(内核) 和 p2(rootfs) 都是 ext4，
-# 盲取"第一个 ext4"会挂到内核分区 —— 那样文件也能拷进去、自检也能过，
-# 但刷机后预配置完全不生效。所以按体积从大到小逐个试挂，
-# 只有能读到 /etc/openwrt_release 的分区才算真正的 rootfs。
-mapfile -t cands < <(lsblk -lnb -o NAME,FSTYPE,SIZE "$loop" \
-	| awk '$2 == "ext4" { print $3, "/dev/" $1 }' | sort -rn | awk '{ print $2 }')
-[ "${#cands[@]}" -gt 0 ] || { echo "镜像内未找到 ext4 分区"; exit 1; }
-
 root=""
-for dev in "${cands[@]}"; do
-	echo "    尝试 $dev（$(lsblk -lnb -o SIZE "$dev" | head -1) 字节）"
+for dev in "${ordered[@]}"; do
+	echo "    尝试 $dev（$(sudo blockdev --getsize64 "$dev" 2>/dev/null || echo ?) 字节）"
+	# 不是 ext4 的（如 EFI 的 vfat）e2fsck 会报错，忽略即可
 	sudo e2fsck -f -y "$dev" >/dev/null 2>&1 || true
-	if ! sudo mount "$dev" "$mountpt"; then
-		echo "    挂载失败，跳过"
+	if ! sudo mount "$dev" "$mountpt" 2>/dev/null; then
+		echo "      挂载失败，跳过"
 		continue
 	fi
 	if [ -f "$mountpt/etc/openwrt_release" ]; then
@@ -60,16 +97,17 @@ for dev in "${cands[@]}"; do
 		mounted=$mountpt
 		break
 	fi
-	echo "    无 etc/openwrt_release，不是 rootfs，换下一个"
+	echo "      无 etc/openwrt_release，不是 rootfs，换下一个"
 	sudo umount "$mountpt"
 done
-[ -n "$root" ] || { echo "没有哪个 ext4 分区含 /etc/openwrt_release，无法定位 rootfs"; exit 1; }
+[ -n "$root" ] || { echo "没有哪个候选含 /etc/openwrt_release，无法定位 rootfs"; exit 1; }
 echo "    rootfs: $root"
 grep -E "^(DISTRIB_DESCRIPTION|DISTRIB_RELEASE)" "$mountpt/etc/openwrt_release" || true
 
 echo "==> 写入预置配置"
 sudo cp -a "$OVERLAY/." "$mountpt/"
 sudo chmod 0755 "$mountpt"/etc/uci-defaults/* 2>/dev/null || true
+(cd "$OVERLAY" && find . -type f | sed 's/^/      /')
 
 if [ ! -f "$mountpt/etc/uci-defaults/90-preconfigured" ]; then
 	echo "预配置脚本未写入镜像"
@@ -77,12 +115,23 @@ if [ ! -f "$mountpt/etc/uci-defaults/90-preconfigured" ]; then
 fi
 mod=$(sudo stat -c '%a' "$mountpt/etc/uci-defaults/90-preconfigured")
 [ "$mod" = "755" ] || { echo "预配置脚本权限异常: $mod"; exit 1; }
-echo "    overlay 文件清单:"
-(cd "$OVERLAY" && find . -type f | sed 's/^/      /')
 
 sync
 sudo umount "$mountpt"
 mounted=""
+
+# 回读校验：重新以只读方式挂一次，确认文件真的落盘、且与 openwrt_release 在同一分区
+echo "==> 回读校验"
+verifypt="$work/verify"
+mkdir -p "$verifypt"
+sudo mount -o ro "$root" "$verifypt"
+[ -f "$verifypt/etc/openwrt_release" ] || { echo "回读失败：openwrt_release 不见了"; exit 1; }
+[ -f "$verifypt/etc/uci-defaults/90-preconfigured" ] || { echo "回读失败：90-preconfigured 不见了"; exit 1; }
+vmod=$(sudo stat -c '%a' "$verifypt/etc/uci-defaults/90-preconfigured")
+[ "$vmod" = "755" ] || { echo "回读失败：权限为 $vmod"; exit 1; }
+echo "    90-preconfigured 已在 rootfs 中，权限 $vmod"
+sudo umount "$verifypt"
+
 sudo losetup -d "$loop"
 loop=""
 

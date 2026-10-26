@@ -96,3 +96,71 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
+
+  # 单独一个 job：拿官方同版本镜像真跑一遍"注入 overlay 生成 preconfigured"，
+  # 2-3 分钟就能验证 loop 分区识别、写盘、回读、重压缩整条链路。
+  # 这一环曾经在编译 70 分钟之后才炸（lsblk FSTYPE 空 → 找不到 ext4 分区），代价太大。
+  inject-smoke:
+    name: preconfigured inject smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve upstream tag
+        id: ver
+        env:
+          IN_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${IN_TAG:-}"
+          if [ -z "$tag" ]; then
+            tag=$(curl -fsSL "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100" \
+              | jq -r '.[] | select(.draft==false and .prerelease==false) | .tag_name' \
+              | grep -Ev 'rc|beta|alpha' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1)
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "VERFILE=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "上游版本: $tag"
+
+      - name: Fetch official image (same layout as our build)
+        env:
+          VERFILE: ${{ steps.ver.outputs.verfile }}
+        run: |
+          set -euo pipefail
+          mkdir -p openwrt/bin/targets/x86/64
+          base="openwrt-x86-64-generic-ext4-combined-efi.img.gz"
+          url="https://downloads.openwrt.org/releases/${VERFILE}/targets/x86/64/openwrt-${VERFILE}-x86-64-generic-ext4-combined-efi.img.gz"
+          echo "下载 $url"
+          curl -fsSL --retry 3 -o "openwrt/bin/targets/x86/64/$base" "$url"
+          ls -lh openwrt/bin/targets/x86/64
+
+      - name: Inject overlay
+        env:
+          VERFILE: ${{ steps.ver.outputs.verfile }}
+        run: |
+          set -euo pipefail
+          bash scripts/make_preconfigured.sh "$VERFILE" files/preconfigured release
+          ls -lh release
+
+      - name: Assert output is usable
+        run: |
+          set -euo pipefail
+          f=$(ls -1 release/*preconfigured.img.gz)
+          echo "产物: $f"
+          gzip -t "$f"
+          imgsize=$(stat -c %s "$f")
+          echo "大小: $imgsize 字节"
+          [ "$imgsize" -gt 10000000 ] || { echo "产物过小，可疑"; exit 1; }
+          echo "== 冒烟测试通过 =="
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== losetup ==="; sudo losetup -a || true
+          echo "=== lsblk ==="; lsblk -o NAME,FSTYPE,SIZE,TYPE || true
+          echo "=== dmesg 尾部 ==="; sudo dmesg | tail -30 || true
+
