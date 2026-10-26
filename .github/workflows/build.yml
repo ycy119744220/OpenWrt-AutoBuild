@@ -130,8 +130,15 @@ jobs:
 
       - name: Checksums
         run: |
+          set -euo pipefail
           cd release
-          sha256sum * > sha256sums.txt
+          # 注意：重定向会先建出 sha256sums.txt，直接 sha256sum * 会把这个空文件也算进去
+          for f in *; do
+            [ -f "$f" ] || continue
+            [ "$f" = "sha256sums.txt" ] && continue
+            sha256sum "$f"
+          done > sha256sums.txt
+          cat sha256sums.txt
           ls -lh
 
       - name: Publish release
