@@ -19,16 +19,22 @@
 
 **两个镜像都默认简体中文 + Argon 主题**，区别只在初始网络配置。
 
-## 三个工作流
+## 四个工作流
 
 | 工作流 | 触发 | 行为 |
 | --- | --- | --- |
 | `check-upstream.yml` | 每天 UTC 20:00、推送到 main、手动 | 取上游最新 `vX.Y.Z`（排除 rc/beta/alpha），与本仓库已有 Release 比对，**有新版本才编译** |
 | `build.yml` | 被上游检测调用、手动（可指定 tag） | 编译 + 双镜像 + 发布 Release |
+| `preflight.yml` | 改到配置/脚本/包时、手动 | **不编译**，只跑「拉源 → 配置 → 裁剪 → defconfig → 校验 → 预置包下载自检」，8-12 分钟，用来在花 3 小时编译前先验证配置链 |
 | `keepalive.yml` | 每月 1 号、手动 | 只提交一个带时间戳的 `.keepalive`，不编译不发布 |
 
 想立刻编译一次：Actions → `check-upstream` → Run workflow。
 想只编译某个历史版本：Actions → `build` → Run workflow → 填 `v25.12.6`。
+改完配置想先验证：Actions → `preflight` → Run workflow。
+
+### 调试开关
+
+仓库变量 `AUTO_BUILD_ENABLED` 设为 `false` 时，`check-upstream` 只检测不编译（改配置期间避免误触发 3 小时任务）。删掉该变量或设为 `true` 即恢复自动编译。
 
 ## 刷写
 
@@ -75,16 +81,19 @@
 
 编译不是"跑完就算成功"，以下检查任一失败都会让 job 失败、不发 Release：
 
-1. `verify_config.sh`：`kmod-igc`/Argon/argon-config/OpenClash/两个本地包/`dnsmasq-full` 必须 `=y`；`luci-app-fstab`/`block-mount`/多余网卡驱动必须 `=n`
-2. `verify_firmware.sh`：rootfs 里必须真的有 Argon 主题文件、中文语言包、`clash_meta` 内核、四个数据库；普通版不得含预配置脚本
-3. `make_preconfigured.sh`：注入后必须能在镜像里找到 `90-preconfigured`
+1. `verify_config.sh`：`kmod-igc`/Argon/argon-config/OpenClash/两个本地包/`dnsmasq-full`/中文语言开关必须 `=y`；`luci-app-fstab`/`block-mount`/多余网卡驱动不得 `=y`（符号若不存在也算通过，因为 kconfig 对未被引用的符号不写任何行）
+2. `verify_firmware.sh`：rootfs 里必须真的有 Argon 主题文件、中文语言包、`clash_meta` 内核、四个数据库，且首启脚本带执行位；普通版不得含预配置脚本
+3. `make_preconfigured.sh`：注入后必须能在镜像里找到 `90-preconfigured` 且权限为 755，输出 gzip 需通过完整性校验
 
 ## 为什么这么设计
 
 - **一次编译出两个镜像**：预配置版不重新编译，而是 `losetup` 挂载已构建的 ext4 镜像，把 overlay 写进去再压回。省掉一遍 3 小时编译。
 - **四个数据库打进固件**：`package/openclash-geo-db` 在编译期下载并安装到 `/etc/openclash/`，刷完机不用等 OpenClash 联网下载（它的 `install.sh` 本来就只在运行时下载）。
-- **Meta 内核用 vernesong 的预编译版**：`core/dev/meta/clash-linux-amd64-v1.tar.gz`，与 OpenClash 官方安装脚本同一来源，避免自己编 mihomo 的架构不匹配问题。
+- **Meta 内核来自 mihomo 官方 release**：`MetaCubeX/mihomo` 的 `mihomo-linux-amd64-v1-<tag>.gz`，编译期解压后落地 `/etc/openclash/core/clash_meta`，并在构建机上跑一次 `-v` 确认是可执行文件。OpenClash 自己的仓库里并没有预编译内核，其 `install.sh` 是运行期才下载的，所以必须自己预置。
+- **Argon 的两个包走 `package/` 而不是 feed**：`luci-theme-argon`、`luci-app-argon-config` 都是「仓库根目录就是包本身」的结构，写成 `src-git` 时 25.12 的 feed 索引生成会报 `target pattern contains no '%'`，随后 `Ignoring feed 'argon' - index missing`，包直接进不了包树。改为 clone 到 `package/` 后完全绕开索引。
+- **挂载点菜单天然不存在**：25.12 已把 `block-mount` 并入 `fstools`，LuCI 侧也不再提供 `luci-app-fstab`，所以「删除挂载点」无需额外操作；`.config` 里保留 `=n` 只是防上游回退。
 - **action 全部 pin 到 node24 版本**：`checkout@v5`、`cache@v5`、`upload-artifact@v6`、`action-gh-release@v3`，不会有 Node.js 20 弃用告警；runner 显式写 `ubuntu-24.04`，不跟随 `ubuntu-latest` 迁移到 Ubuntu 26。
+- **脚本一律用 glob 找产物**：不硬编码 `x86-64-generic-*` 文件名，避免上游改了设备命名后到最后一刻才失败。
 
 ## 关闭自动编译
 

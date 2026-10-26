@@ -5,8 +5,13 @@ set -euo pipefail
 V=${1:?用法: verify_firmware.sh <版本号> <plain|preconfigured>}
 MODE=${2:-plain}
 
-TAR="openwrt/bin/targets/x86/64/openwrt-${V}-x86-64-generic-rootfs.tar.gz"
-[ -f "$TAR" ] || { echo "找不到 $TAR"; exit 1; }
+TAR=$(ls -1 openwrt/bin/targets/x86/64/*-rootfs.tar.gz 2>/dev/null | head -1 || true)
+[ -n "$TAR" ] && [ -f "$TAR" ] || {
+	echo "找不到 rootfs.tar.gz（openwrt/bin/targets/x86/64/）"
+	ls -lh openwrt/bin/targets/x86/64 2>/dev/null || true
+	exit 1
+}
+echo "== 检查 $TAR"
 
 LIST=$(tar -tzf "$TAR")
 fail=0
