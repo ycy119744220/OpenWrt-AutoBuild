@@ -12,10 +12,7 @@ on:
   push:
     paths:
       - 'config/**'
-      - 'scripts/feeds.sh'
-      - 'scripts/prepare_config.sh'
-      - 'scripts/trim_x86.py'
-      - 'scripts/verify_config.sh'
+      - 'scripts/**'
       - 'package/**'
       - 'files/**'
       - '.github/workflows/preflight.yml'
