@@ -17,6 +17,13 @@ on:
 permissions:
   contents: write
 
+# 同一个 tag 只允许一个编译在跑。push 会同时经 check-upstream 触发一次 build，
+# 和手动 dispatch 并列跑会重复编译 70 分钟、还争抢同一个 Release tag。
+# 用 cancel-in-progress: true，让后触发的（通常是有意重试）留下、旧的让路。
+concurrency:
+  group: openwrt-build-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: true
+
 env:
   CCACHE_MAXSIZE: 2G
   CCACHE_COMPRESS: 'true'

@@ -28,6 +28,8 @@ echo "==> 内核:   $KERNEL"
 
 cp -f "$IMG" "$ROOTFS" "$KERNEL" release/
 
-# 记录本次镜像实际文件名，供后续步骤与 Release 说明使用
-basename "$IMG" > release/.imagename
+# 注意：不要在 release/ 里放隐藏文件当"元数据"。softprops/action-gh-release
+# 会把点开头的文件改名成 default.<name> 再上传，于是 Release 里会多出一个
+# 无用的 default.imagename 附件。真需要记录就写到 /tmp。
+basename "$IMG" > /tmp/imagename.txt
 ls -lh release
