@@ -1,0 +1,61 @@
+name: check-upstream
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openwrt-build
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: detect latest stable tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      has_new: ${{ steps.detect.outputs.has_new }}
+      tag: ${{ steps.detect.outputs.tag }}
+    steps:
+      - name: Detect latest stable tag
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(curl -fsSL "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100" \
+            | jq -r '.[] | select(.draft==false and .prerelease==false) | .tag_name' \
+            | grep -Ev 'rc|beta|alpha' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+            echo "未取到上游稳定版本号"; exit 1
+          fi
+          echo "上游最新正式版: $latest"
+          echo "tag=$latest" >> "$GITHUB_OUTPUT"
+
+          published=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName -q '.[].tagName' || true)
+          if printf '%s\n' "$published" | grep -qx -- "$latest"; then
+            echo "本仓库已发布过 $latest，跳过编译"
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "发现新版本 $latest，触发编译"
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: build
+    needs: check
+    if: needs.check.outputs.has_new == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      tag: ${{ needs.check.outputs.tag }}
