@@ -103,7 +103,12 @@ jobs:
         run: cd openwrt && make -j"$(nproc)" download
 
       - name: Compile firmware
-        run: cd openwrt && make -j"$(nproc)" V=s 2>&1 | tee build.log
+        # 必须开 pipefail：默认 bash -e 只看管道最后一个命令（tee）的退出码，
+        # make 失败会被吞掉，步骤显示 success，然后在下一步「Collect images」才炸，
+        # 日志里看不到真正的错误。第一次构建就是这样被误导的。
+        run: |
+          set -o pipefail
+          cd openwrt && make -j"$(nproc)" V=s 2>&1 | tee build.log
 
       - name: Upload build log on failure
         if: failure()

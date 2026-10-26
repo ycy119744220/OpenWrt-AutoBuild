@@ -54,6 +54,24 @@ fi
 rm -rf package/luci-app-openclash
 cp -r /tmp/openclash/luci-app-openclash package/luci-app-openclash
 
+# 关键：OpenClash 的包目录里自带 etc/openclash/Country.mmdb（205KB 桩文件）与
+# GeoSite.dat（10.4MB）。我们的 openclash-geo-db 也要装这两个路径，apk 在
+# package/install 阶段会直接报：
+#   ERROR: openclash-geo-db-1.0-r1: trying to overwrite etc/openclash/Country.mmdb
+#          owned by luci-app-openclash-0.48.002.
+#   ERROR: openclash-geo-db-1.0-r1: trying to overwrite etc/openclash/GeoSite.dat
+#          owned by luci-app-openclash-0.48.002.
+#   1 error; 143.8 MiB in 202 packages
+# 并让整个 make 以 Error 2 结束。
+# 处理方式：把四个数据库文件从 OpenClash 包目录里删掉，让这些路径的所有权
+# 完全归 openclash-geo-db（它装的是 MetaCubeX 的最新版，比自带的桩文件新且全）。
+for f in Country.mmdb GeoSite.dat GeoIP.dat ASN.mmdb; do
+	if [ -f "package/luci-app-openclash/root/etc/openclash/${f}" ]; then
+		rm -f "package/luci-app-openclash/root/etc/openclash/${f}"
+		echo "==> 从 luci-app-openclash 移除自带 ${f}（改由 openclash-geo-db 提供）"
+	fi
+done
+
 echo "==> 复制本仓库的本地包（OpenClash 内核与 4 个数据库）"
 rm -rf package/openclash-core-meta package/openclash-geo-db
 cp -r ../package/openclash-core-meta ../package/openclash-geo-db package/
