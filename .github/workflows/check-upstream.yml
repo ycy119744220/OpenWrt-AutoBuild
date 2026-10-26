@@ -53,7 +53,9 @@ jobs:
   build:
     name: build
     needs: check
-    if: needs.check.outputs.has_new == 'true'
+    # 仓库变量 AUTO_BUILD_ENABLED 设为 false 时只检测不编译（调试期用），
+    # 默认为空即视为开启，正常使用无需配置。
+    if: needs.check.outputs.has_new == 'true' && vars.AUTO_BUILD_ENABLED != 'false'
     permissions:
       contents: write
     uses: ./.github/workflows/build.yml

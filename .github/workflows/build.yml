@@ -88,11 +88,31 @@ jobs:
           mkdir -p release
           cp openwrt/.config "release/config-${VERFILE}.config"
 
+      - name: Upload generated .config
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: dot-config-${{ steps.ver.outputs.version }}
+          path: |
+            openwrt/.config
+            release/config-*.config
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Download source packages
         run: cd openwrt && make -j"$(nproc)" download
 
       - name: Compile firmware
         run: cd openwrt && make -j"$(nproc)" V=s 2>&1 | tee build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-log
+          path: openwrt/build.log
+          if-no-files-found: ignore
+          retention-days: 5
 
       - name: Collect images
         run: bash scripts/collect.sh "$VERFILE"

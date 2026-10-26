@@ -1,0 +1,98 @@
+name: preflight
+
+# 只做「拉源 + 配置 + 裁剪 + defconfig + 校验 + 预置包下载自检」，不编译。
+# 大约 8-12 分钟，用来在真正花 2-4 小时编译之前验证整条配置链是否成立。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'OpenWrt tag（留空取最新稳定版）'
+        required: false
+        default: ''
+  push:
+    paths:
+      - 'config/**'
+      - 'scripts/feeds.sh'
+      - 'scripts/prepare_config.sh'
+      - 'scripts/trim_x86.py'
+      - 'scripts/verify_config.sh'
+      - 'package/**'
+      - 'files/**'
+      - '.github/workflows/preflight.yml'
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  preflight:
+    name: config preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y --no-install-recommends \
+            build-essential libncurses-dev zlib1g-dev gawk git gettext \
+            libssl-dev xsltproc unzip python3 rsync file bc curl jq wget
+
+      - name: Resolve upstream tag
+        id: ver
+        env:
+          IN_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${IN_TAG:-}"
+          if [ -z "$tag" ]; then
+            tag=$(curl -fsSL "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100" \
+              | jq -r '.[] | select(.draft==false and .prerelease==false) | .tag_name' \
+              | grep -Ev 'rc|beta|alpha' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1)
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$tag"  >> "$GITHUB_ENV"
+          echo "上游版本: $tag"
+
+      - name: Feeds and third-party packages
+        run: bash scripts/feeds.sh "$VERSION"
+
+      - name: Prepare config / trim / defconfig / verify
+        run: |
+          set -euo pipefail
+          mkdir -p openwrt/files
+          cp -a files/common/. openwrt/files/
+          chmod -R 0755 openwrt/files/etc/uci-defaults
+          bash scripts/prepare_config.sh config/x86_64.config config/ci-extra.config openwrt/.config
+          ( cd openwrt && python3 ../scripts/trim_x86.py )
+          ( cd openwrt && make defconfig )
+          ( cd openwrt && bash ../scripts/verify_config.sh )
+
+      - name: Check prebuilt package downloads
+        run: |
+          set -euo pipefail
+          ( cd openwrt && make package/openclash-core-meta/prepare V=s )
+          ( cd openwrt && make package/openclash-geo-db/prepare V=s )
+
+      - name: Report key symbols
+        if: always()
+        run: |
+          echo "=== 关键符号 ==="
+          grep -nE 'CONFIG_(PACKAGE_(luci-theme-argon|luci-app-argon-config|luci-app-openclash|openclash-core-meta|openclash-geo-db|dnsmasq|luci-app-upnp|kmod-igc|kmod-r8169)|LUCI_LANG)' openwrt/.config || echo "(未找到任何关键符号)"
+          echo "=== 第三方包目录 ==="
+          ls -d openwrt/package/luci-theme-argon openwrt/package/luci-app-argon-config openwrt/package/luci-app-openclash 2>&1 || true
+
+      - name: Upload .config
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: dot-config
+          path: openwrt/.config
+          if-no-files-found: ignore
+          retention-days: 7
