@@ -15,7 +15,6 @@ must_y="
 CONFIG_TARGET_x86_64
 CONFIG_PACKAGE_kmod-igc
 CONFIG_PACKAGE_luci-theme-argon
-CONFIG_PACKAGE_luci-app-argon-config
 CONFIG_LUCI_LANG_zh_Hans
 CONFIG_PACKAGE_luci-app-openclash
 CONFIG_PACKAGE_openclash-core-meta

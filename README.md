@@ -79,7 +79,7 @@
 
 编译不是"跑完就算成功"，以下检查任一失败都会让 job 失败、不发 Release：
 
-1. `verify_config.sh`：`kmod-igc`/Argon/argon-config/OpenClash/两个本地包/`dnsmasq-full`/中文语言开关必须 `=y`；`luci-app-fstab`/`block-mount`/多余网卡驱动不得 `=y`（符号若不存在也算通过，因为 kconfig 对未被引用的符号不写任何行）
+1. `verify_config.sh`：`kmod-igc`/Argon 主题/OpenClash/两个本地包/`dnsmasq-full`/中文语言开关必须 `=y`；`luci-app-fstab`/`block-mount`/多余网卡驱动不得 `=y`（符号若不存在也算通过，因为 kconfig 对未被引用的符号不写任何行）
 2. `verify_firmware.sh`：rootfs 里必须真的有 Argon 主题文件、中文语言包、`clash_meta` 内核、四个数据库，且首启脚本带执行位；普通版不得含预配置脚本
 3. `make_preconfigured.sh`：注入后必须能在镜像里找到 `90-preconfigured` 且权限为 755，输出 gzip 需通过完整性校验
 
@@ -88,7 +88,8 @@
 - **一次编译出两个镜像**：预配置版不重新编译，而是 `losetup` 挂载已构建的 ext4 镜像，把 overlay 写进去再压回。省掉一遍 3 小时编译。
 - **四个数据库打进固件**：`package/openclash-geo-db` 在编译期下载并安装到 `/etc/openclash/`，刷完机不用等 OpenClash 联网下载（它的 `install.sh` 本来就只在运行时下载）。
 - **Meta 内核来自 mihomo 官方 release**：`MetaCubeX/mihomo` 的 `mihomo-linux-amd64-v1-<tag>.gz`，编译期解压后落地 `/etc/openclash/core/clash_meta`，并在构建机上跑一次 `-v` 确认是可执行文件。OpenClash 自己的仓库里并没有预编译内核，其 `install.sh` 是运行期才下载的，所以必须自己预置。
-- **Argon 的两个包走 `package/` 而不是 feed**：`luci-theme-argon`、`luci-app-argon-config` 都是「仓库根目录就是包本身」的结构，写成 `src-git` 时 25.12 的 feed 索引生成会报 `target pattern contains no '%'`，随后 `Ignoring feed 'argon' - index missing`，包直接进不了包树。改为 clone 到 `package/` 后完全绕开索引。
+- **Argon 主题走 `package/` 而不是 feed**：`luci-theme-argon` 是「仓库根目录就是包本身」的结构，写成 `src-git` 时 25.12 的 feed 索引生成会报 `target pattern contains no '%'`，随后 `Ignoring feed 'argon' - index missing`，包直接进不了包树。改为 clone 到 `package/` 后完全绕开索引。
+- **不单独装 `luci-app-argon-config`**：Argon 自 3.0.0 起已把 Argon Config（配置页、rpc、acl、壁纸）整合进主题包，兼容壳与主题包装的是同一批文件。上游 3.1.1（2026-10-28）起两者同时安装必然触发 `trying to overwrite etc/config/argon owned by luci-theme-argon`，`make package/install` 直接 Error 1。主题包本身已含配置界面，无需兼容壳。
 - **挂载点菜单天然不存在**：25.12 已把 `block-mount` 并入 `fstools`，LuCI 侧也不再提供 `luci-app-fstab`，所以「删除挂载点」无需额外操作；`.config` 里保留 `=n` 只是防上游回退。
 - **action 全部 pin 到 node24 版本**：`checkout@v5`、`cache@v5`、`upload-artifact@v6`、`action-gh-release@v3`，不会有 Node.js 20 弃用告警；runner 显式写 `ubuntu-24.04`，不跟随 `ubuntu-latest` 迁移到 Ubuntu 26。
 - **脚本一律用 glob 找产物**：不硬编码 `x86-64-generic-*` 文件名，避免上游改了设备命名后到最后一刻才失败。

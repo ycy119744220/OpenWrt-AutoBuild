@@ -13,7 +13,7 @@ echo "==> 安装官方 feeds（packages / luci / routing / telephony / video）"
 ./scripts/feeds install -a
 
 # 说明（这是一次真实踩坑）：
-# luci-theme-argon 与 luci-app-argon-config 都是「仓库根目录就是包本身」的结构。
+# luci-theme-argon 是「仓库根目录就是包本身」的结构。
 # 若写成 src-git feed，25.12 的 feeds 索引生成会把包自己的 Makefile 当成 feed 索引
 # 去解析，得到：
 #     feeds/argon.tmp/info/.files-packageinfo.mk:1: *** target pattern contains no '%'
@@ -36,8 +36,13 @@ fetch_pkg() {
 	fi
 }
 
+# 只拉主题包。Argon 自 3.0.0 起已把 Argon Config（含配置页、rpc、acl、壁纸）
+# 整合进主题包，luci-app-argon-config 退化为给老安装用的兼容壳。
+# 两者同时安装会在 make package/install 阶段撞文件所有权：
+#   ERROR: luci-app-argon-config: trying to overwrite etc/config/argon
+#          owned by luci-theme-argon-3.1.1
+# 上游 3.1.1（2026-10-28）起冲突必现，因此不再单独安装兼容壳。
 fetch_pkg luci-theme-argon      luci-theme-argon
-fetch_pkg luci-app-argon-config luci-app-argon-config
 
 echo "==> 拉取 OpenClash 最新 release"
 oc_tag=$(curl -fsSL https://api.github.com/repos/vernesong/OpenClash/releases/latest \
@@ -87,13 +92,12 @@ show_pkg() {
 		"$(grep -m1 -E '^PKG_RELEASE:=' "${d}/Makefile" | sed 's/^[^:]*:=//')"
 }
 show_pkg package/luci-theme-argon
-show_pkg package/luci-app-argon-config
 show_pkg package/luci-app-openclash
 show_pkg package/openclash-core-meta
 show_pkg package/openclash-geo-db
 
-# 关键校验：三个第三方包的源码必须真的在位，否则后面 defconfig 会静默丢包
-for d in package/luci-theme-argon package/luci-app-argon-config package/luci-app-openclash; do
+# 关键校验：第三方包的源码必须真的在位，否则后面 defconfig 会静默丢包
+for d in package/luci-theme-argon package/luci-app-openclash; do
 	[ -f "${d}/Makefile" ] || { echo "!! ${d} 没有 Makefile，第三方源拉取失败"; exit 1; }
 done
 echo "==> 第三方包就位"
