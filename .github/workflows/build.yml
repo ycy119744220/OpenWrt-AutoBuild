@@ -25,7 +25,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CCACHE_MAXSIZE: 2G
+  # 8G：一次 x86_64 全量编译的中间产物远超 2G，2G 只能命中约 10% 的编译单元。
+  # ccache 开着 CCACHE_COMPRESS，8G 上限对应磁盘实际约 2-3G，仍在 10G 仓库缓存配额内。
+  CCACHE_MAXSIZE: 8G
   CCACHE_COMPRESS: 'true'
 
 jobs:
