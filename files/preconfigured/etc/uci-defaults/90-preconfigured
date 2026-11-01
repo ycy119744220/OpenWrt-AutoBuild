@@ -32,17 +32,14 @@ add_redirect() {
 	uci set "firewall.$1.target=DNAT"
 	uci set "firewall.$1.src=wan"
 	uci set "firewall.$1.dest=lan"
-	uci set "firewall.$1.proto=tcp"
+	uci set "firewall.$1.proto=${4:-tcp}"
 	uci set "firewall.$1.src_dport=$2"
 	uci set "firewall.$1.dest_ip=$3"
 	uci set "firewall.$1.dest_port=$2"
 	uci set "firewall.$1.family=ipv4"
 }
-add_redirect 'Docker_Bitwarden' '8890' '192.168.88.254'
-add_redirect 'Synology_Portal'  '8888' '192.168.88.254'
-add_redirect 'Synology_Drive'   '6690' '192.168.88.254'
-add_redirect 'Synology_Photo'   '443'  '192.168.88.254'
-add_redirect 'Synology_VPN'     '9999' '192.168.88.254'
+# 参数：<规则名> <外部端口=内部端口> <内部 IP> [协议，默认 tcp]
+add_redirect 'Synology_VPN'     '8888' '192.168.88.254' 'udp'
 
 uci set upnpd.config.enabled='1'
 uci set upnpd.config.enable_upnp='1'
