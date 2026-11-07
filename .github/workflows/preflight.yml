@@ -60,6 +60,9 @@ jobs:
       - name: Feeds and third-party packages
         run: bash scripts/feeds.sh "$VERSION"
 
+      - name: Remove LED Configuration menu entry
+        run: python3 scripts/remove_led_menu.py
+
       - name: Prepare config / trim / defconfig / verify
         run: |
           set -euo pipefail
@@ -86,9 +89,13 @@ jobs:
           grep -nE 'CONFIG_(RUBY_ENABLE_YJIT|PACKAGE_rust)[= ]|# CONFIG_(RUBY_ENABLE_YJIT|PACKAGE_rust) is not set' openwrt/.config || echo "(未找到 YJIT/rust 符号)"
           echo "=== 第三方包目录 ==="
           ls -d openwrt/package/luci-theme-argon openwrt/package/luci-app-argon-config openwrt/package/luci-app-openclash 2>&1 || true
-          echo "=== LED 菜单条目（files/common 的首启脚本按此路径删除，路径变了必须同步改）==="
-          grep -rn 'admin/system/leds' openwrt/feeds/luci/modules/luci-mod-system/root/usr/share/luci/menu.d/ 2>&1 \
-            || echo "(未找到 admin/system/leds，上游可能已改路径或已移除该菜单)"
+          echo "=== LED 菜单移除结果（针对源码内容做断言，不是只看脚本在不在）==="
+          menu=$(find openwrt/feeds/luci -path '*/menu.d/luci-mod-system.json' -print -quit)
+          [ -n "$menu" ] || { echo "FAIL 找不到 luci-mod-system 菜单文件，上游目录结构可能已变更"; exit 1; }
+          if grep -q 'system/leds' "$menu"; then
+            echo "FAIL 源菜单 JSON 仍含 LED 配置条目"; exit 1
+          fi
+          echo "OK   源菜单 JSON 已无 LED 配置条目 ($menu)"
 
       - name: Upload .config
         if: always()

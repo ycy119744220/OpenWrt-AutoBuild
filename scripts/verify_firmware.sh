@@ -69,14 +69,28 @@ esac
 
 chk 'luci-static/argon/' 'Argon 主题文件已打包'
 
-chk 'etc/uci-defaults/95-luci-hide-leds' '隐藏 LED 菜单的首启脚本已打包'
-
-# 同首启脚本一致：没有执行位就等于没生效，菜单会照旧出现
-mode=$(awk '$NF ~ /etc\/uci-defaults\/95-luci-hide-leds$/ { print $1; exit }' "$TVFILE")
-case "$mode" in
-	-rwx*) echo "OK   隐藏 LED 菜单脚本可执行 ($mode)" ;;
-	*)     echo "FAIL 隐藏 LED 菜单脚本缺少执行位 (${mode:-未找到})，菜单不会被移除"; fail=1 ;;
-esac
+# == LED 菜单：直接检查 rootfs 里的菜单 JSON 内容 ==
+# 历史踩坑：曾经只检查「隐藏菜单的首启脚本已打包且可执行」，脚本本身没问题，
+# 但它用 uci del 去删一个根本不在 /etc/config/luci 里的菜单节点，什么都没删掉，
+# 自检却全绿。LuCI 的菜单来自 /usr/share/luci/menu.d/*.json，所以这里验结果而非手段。
+menufile=$(grep -E 'usr/share/luci/menu\.d/luci-mod-system\.json$' "$LISTF" | head -1 || true)
+if [ -z "$menufile" ]; then
+	echo "FAIL 找不到 luci-mod-system 菜单文件，无法确认 LED 菜单已移除"
+	fail=1
+else
+	menujson=$WORK/menu.json
+	# tar 条目带 ./ 前缀；写文件再 grep，避免 printf|grep -q 命中触发 SIGPIPE(141)
+	tar -xOzf "$TAR" "./$menufile" >"$menujson" 2>/dev/null || true
+	if [ ! -s "$menujson" ]; then
+		echo "FAIL 无法读取菜单 JSON 内容 ($menufile)"
+		fail=1
+	elif grep -q 'system/leds' "$menujson"; then
+		echo "FAIL 菜单 JSON 仍含 LED 配置条目，菜单不会被移除"
+		fail=1
+	else
+		echo "OK   菜单 JSON 不含 LED 配置条目 ($menufile)"
+	fi
+fi
 
 # OpenClash 本体（启动脚本 + 资源目录）也在镜像里才说明插件真的装上了
 chk 'etc/init.d/openclash' 'OpenClash 启动脚本已打包'
