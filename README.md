@@ -91,6 +91,7 @@
 - **Argon 主题走 `package/` 而不是 feed**：`luci-theme-argon` 是「仓库根目录就是包本身」的结构，写成 `src-git` 时 25.12 的 feed 索引生成会报 `target pattern contains no '%'`，随后 `Ignoring feed 'argon' - index missing`，包直接进不了包树。改为 clone 到 `package/` 后完全绕开索引。
 - **不单独装 `luci-app-argon-config`**：Argon 自 3.0.0 起已把 Argon Config（配置页、rpc、acl、壁纸）整合进主题包，兼容壳与主题包装的是同一批文件。上游 3.1.1（2026-10-28）起两者同时安装必然触发 `trying to overwrite etc/config/argon owned by luci-theme-argon`，`make package/install` 直接 Error 1。主题包本身已含配置界面，无需兼容壳。
 - **挂载点菜单天然不存在**：25.12 已把 `block-mount` 并入 `fstools`，LuCI 侧也不再提供 `luci-app-fstab`，所以「删除挂载点」无需额外操作；`.config` 里保留 `=n` 只是防上游回退。
+- **「系统 → LED 配置」用 uci-defaults 移除**：该菜单由 `luci-mod-system` 的 menu.d JSON 定义（`admin/system/leds`），和系统、管理权、计划任务、备份刷机在同一个包里，拆包拆不掉。`files/common/etc/uci-defaults/95-luci-hide-leds` 在首启时 `uci delete luci.admin/system/leds`，只摘掉菜单注册，不碰 LED 驱动与 `/etc/config/system` 里已有的 led 段（网卡指示灯照常）。不用编译期改上游源码，是因为 `uci del` 只依赖菜单路径，不依赖 JSON 排版。
 - **action 全部 pin 到 node24 版本**：`checkout@v5`、`cache@v5`、`upload-artifact@v6`、`action-gh-release@v3`，不会有 Node.js 20 弃用告警；runner 显式写 `ubuntu-24.04`，不跟随 `ubuntu-latest` 迁移到 Ubuntu 26。
 - **脚本一律用 glob 找产物**：不硬编码 `x86-64-generic-*` 文件名，避免上游改了设备命名后到最后一刻才失败。
 

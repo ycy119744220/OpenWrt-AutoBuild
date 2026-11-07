@@ -69,6 +69,15 @@ esac
 
 chk 'luci-static/argon/' 'Argon 主题文件已打包'
 
+chk 'etc/uci-defaults/95-luci-hide-leds' '隐藏 LED 菜单的首启脚本已打包'
+
+# 同首启脚本一致：没有执行位就等于没生效，菜单会照旧出现
+mode=$(awk '$NF ~ /etc\/uci-defaults\/95-luci-hide-leds$/ { print $1; exit }' "$TVFILE")
+case "$mode" in
+	-rwx*) echo "OK   隐藏 LED 菜单脚本可执行 ($mode)" ;;
+	*)     echo "FAIL 隐藏 LED 菜单脚本缺少执行位 (${mode:-未找到})，菜单不会被移除"; fail=1 ;;
+esac
+
 # OpenClash 本体（启动脚本 + 资源目录）也在镜像里才说明插件真的装上了
 chk 'etc/init.d/openclash' 'OpenClash 启动脚本已打包'
 chk 'share/openclash/' 'OpenClash 资源目录已打包'

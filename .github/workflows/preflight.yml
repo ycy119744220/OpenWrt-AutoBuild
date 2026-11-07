@@ -86,6 +86,9 @@ jobs:
           grep -nE 'CONFIG_(RUBY_ENABLE_YJIT|PACKAGE_rust)[= ]|# CONFIG_(RUBY_ENABLE_YJIT|PACKAGE_rust) is not set' openwrt/.config || echo "(未找到 YJIT/rust 符号)"
           echo "=== 第三方包目录 ==="
           ls -d openwrt/package/luci-theme-argon openwrt/package/luci-app-argon-config openwrt/package/luci-app-openclash 2>&1 || true
+          echo "=== LED 菜单条目（files/common 的首启脚本按此路径删除，路径变了必须同步改）==="
+          grep -rn 'admin/system/leds' openwrt/feeds/luci/modules/luci-mod-system/root/usr/share/luci/menu.d/ 2>&1 \
+            || echo "(未找到 admin/system/leds，上游可能已改路径或已移除该菜单)"
 
       - name: Upload .config
         if: always()
