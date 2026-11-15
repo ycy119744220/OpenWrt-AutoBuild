@@ -2,7 +2,7 @@
 
 自动跟踪 [openwrt/openwrt](https://github.com/openwrt/openwrt) 的最新**正式版** tag，编译 x86_64 软路由精简固件，并发布到本仓库的 Releases。
 
-默认简体中文界面 + Argon 主题，集成本仓库预置的 OpenClash（含 Meta 内核与四个数据库）。
+默认简体中文界面 + Argon 主题，集成本仓库预置的 OpenClash（含 Meta 内核与四个数据库），并内置 WireGuard（内核模块 + `wireguard-tools` + LuCI 协议页与状态页；服务端的监听端口、密钥、peers 需开机后在「网络 → 接口」里自行添加）。
 
 ## 发布产物
 
