@@ -29,15 +29,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          latest=$(curl -fsSL "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100" \
-            | jq -r '.[] | select(.draft==false and .prerelease==false) | .tag_name' \
-            | grep -Ev 'rc|beta|alpha' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | sort -V | tail -1)
-          if [ -z "$latest" ]; then
-            echo "未取到上游稳定版本号"; exit 1
-          fi
-          echo "上游最新正式版: $latest"
+          # 统一走 scripts/resolve_tag.sh：带认证 + 重试，避免 runner 共享 IP 撞匿名限流 403
+          bash scripts/resolve_tag.sh
+          latest="$VERSION"
           echo "tag=$latest" >> "$GITHUB_OUTPUT"
 
           published=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \

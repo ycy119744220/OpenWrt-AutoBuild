@@ -43,20 +43,8 @@ jobs:
         id: ver
         env:
           IN_TAG: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-          tag="${IN_TAG:-}"
-          if [ -z "$tag" ]; then
-            tag=$(curl -fsSL "https://api.github.com/repos/openwrt/openwrt/releases?per_page=100" \
-              | jq -r '.[] | select(.draft==false and .prerelease==false) | .tag_name' \
-              | grep -Ev 'rc|beta|alpha' \
-              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-              | sort -V | tail -1)
-          fi
-          echo "version=$tag" >> "$GITHUB_OUTPUT"
-          echo "VERSION=$tag" >> "$GITHUB_ENV"
-          echo "VERFILE=${tag#v}" >> "$GITHUB_ENV"
-          echo "上游版本: $tag"
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/resolve_tag.sh "$IN_TAG"
 
       - name: Free disk space
         run: |
