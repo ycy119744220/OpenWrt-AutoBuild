@@ -33,8 +33,10 @@ jobs:
         run: |
           set -euo pipefail
           # 统一走 scripts/resolve_tag.sh：带认证 + 重试，避免 runner 共享 IP 撞匿名限流 403
-          bash scripts/resolve_tag.sh
-          latest="$VERSION"
+          # （GITHUB_ENV 本步骤内读不到，版本号从 stdout 的 RESULT= 行取）
+          out=$(bash scripts/resolve_tag.sh)
+          latest=$(printf '%s\n' "$out" | sed -n 's/^RESULT=//p')
+          [ -n "$latest" ] || { echo "未取到上游稳定版本号"; exit 1; }
           echo "tag=$latest" >> "$GITHUB_OUTPUT"
 
           published=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \

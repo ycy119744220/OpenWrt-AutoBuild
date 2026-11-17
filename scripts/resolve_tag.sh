@@ -48,6 +48,8 @@ else
 fi
 
 echo "上游版本: $latest"
+# GITHUB_ENV 的写入要下一步才生效，本步骤内需要版本号时从 stdout 取这行
+echo "RESULT=$latest"
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
 	echo "version=$latest" >> "$GITHUB_OUTPUT"
 fi

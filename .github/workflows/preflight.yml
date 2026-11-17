@@ -114,8 +114,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bash scripts/resolve_tag.sh "$IN_TAG"
-          echo "VERFILE=$VERFILE" >> "$GITHUB_OUTPUT"
+          out=$(bash scripts/resolve_tag.sh "$IN_TAG")
+          verfile=$(printf '%s\n' "$out" | sed -n 's/^RESULT=//p')
+          echo "VERFILE=${verfile#v}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch official image (same layout as our build)
         env:
