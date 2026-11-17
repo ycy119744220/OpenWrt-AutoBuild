@@ -23,6 +23,9 @@ jobs:
       has_new: ${{ steps.detect.outputs.has_new }}
       tag: ${{ steps.detect.outputs.tag }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Detect latest stable tag
         id: detect
         env:
