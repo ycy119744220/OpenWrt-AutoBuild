@@ -77,9 +77,9 @@ for f in Country.mmdb GeoSite.dat GeoIP.dat ASN.mmdb; do
 	fi
 done
 
-echo "==> 复制本仓库的本地包（OpenClash 内核与 4 个数据库）"
-rm -rf package/openclash-core-meta package/openclash-geo-db
-cp -r ../package/openclash-core-meta ../package/openclash-geo-db package/
+echo "==> 复制本仓库的本地包（OpenClash 内核与 4 个数据库、DDNS-GO）"
+rm -rf package/openclash-core-meta package/openclash-geo-db package/ddns-go
+cp -r ../package/openclash-core-meta ../package/openclash-geo-db ../package/ddns-go package/
 
 echo "==> 组件版本"
 show_pkg() {
@@ -95,6 +95,7 @@ show_pkg package/luci-theme-argon
 show_pkg package/luci-app-openclash
 show_pkg package/openclash-core-meta
 show_pkg package/openclash-geo-db
+show_pkg package/ddns-go
 
 # 关键校验：第三方包的源码必须真的在位，否则后面 defconfig 会静默丢包
 for d in package/luci-theme-argon package/luci-app-openclash; do
