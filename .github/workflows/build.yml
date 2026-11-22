@@ -147,12 +147,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "发现已存在的 Release $VERSION，删除后重建（git tag 保留）"
-            gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes
-          else
-            echo "该 tag 尚无 Release，直接创建"
-          fi
+          # 2026-11-22 事故：旧写法 `gh release view ... 2>&1` 把查询本身的网络
+          # 错误也吞掉，误判「Release 不存在」跳过删除，随后发版撞上同名
+          # Release 已存在而失败。现在区分「确实不存在」和「查询失败」：
+          # 查询失败重试 3 次，仍失败就中止，绝不允许静默跳过。
+          resolved=0
+          for i in 1 2 3; do
+            if view_out=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" 2>&1); then
+              echo "发现已存在的 Release $VERSION，删除后重建（git tag 保留）"
+              gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes
+              # 复核：删完必须真的查不到了
+              if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                echo "!!! Release 删除后仍然可见，中止发版流程"; exit 1
+              fi
+              resolved=1
+              break
+            fi
+            if echo "$view_out" | grep -qiE "not found|no releases|could not find|not exist"; then
+              echo "该 tag 尚无 Release，直接创建"
+              resolved=1
+              break
+            fi
+            echo "查询 Release 状态失败（第 $i/3 次）：$view_out"
+            sleep 10
+          done
+          [ "$resolved" = "1" ] || { echo "!!! 无法确认 Release 状态，中止发版流程"; exit 1; }
 
       - name: Publish release
         uses: softprops/action-gh-release@v3
