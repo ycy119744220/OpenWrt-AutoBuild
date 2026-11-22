@@ -77,6 +77,38 @@ for f in Country.mmdb GeoSite.dat GeoIP.dat ASN.mmdb; do
 	fi
 done
 
+# 控制面板刷新到编译时刻的最新版。
+# OpenClash 自带的 ui/metacubexd、ui/zashboard 是它打包时的快照，会随时间落后；
+# 插件内「更新面板」按钮用的正是下面这两个 codeload 地址（gh-pages 分支的 zip）。
+# 这里在编译期做同样的事：下载最新 zip -> 解压校验 -> 整体替换包树里的面板目录。
+# 下载重试 3 次，最终失败直接中止编译——宁可失败也不悄悄编一份旧面板。
+refresh_dashboard() {
+	local name="$1" url="$2"
+	local ui_dir="package/luci-app-openclash/root/usr/share/openclash/ui/${name}"
+	local zipf="/tmp/${name}.zip" tmpd="/tmp/${name}-dash"
+	local ok=0
+	for i in 1 2 3; do
+		rm -rf "${tmpd}" && mkdir -p "${tmpd}"
+		if curl -fsSL --max-time 120 -o "${zipf}" "${url}" \
+			&& unzip -q "${zipf}" -d "${tmpd}" \
+			&& inner=$(find "${tmpd}" -maxdepth 1 -mindepth 1 -type d | head -1) \
+			&& [ -n "${inner}" ] && [ -f "${inner}/index.html" ]; then
+			ok=1
+			break
+		fi
+		echo "==> ${name} 第 ${i} 次下载/解压失败，重试"
+		sleep 5
+	done
+	[ "${ok}" = "1" ] || { echo "!!! ${name} 控制面板下载失败，中止编译"; exit 1; }
+	rm -rf "${ui_dir}"
+	cp -r "${inner}" "${ui_dir}"
+	rm -rf "${tmpd}" "${zipf}"
+	echo "==> 控制面板 ${name} 已刷新为最新版（$(find "${ui_dir}" -type f | wc -l) 个文件）"
+}
+
+refresh_dashboard metacubexd "https://codeload.github.com/MetaCubeX/metacubexd/zip/refs/heads/gh-pages"
+refresh_dashboard zashboard "https://codeload.github.com/Zephyruso/zashboard/zip/refs/heads/gh-pages-cdn-fonts"
+
 echo "==> 复制本仓库的本地包（OpenClash 内核与 4 个数据库、DDNS-GO）"
 rm -rf package/openclash-core-meta package/openclash-geo-db package/ddns-go
 cp -r ../package/openclash-core-meta ../package/openclash-geo-db ../package/ddns-go package/
